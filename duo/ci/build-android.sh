@@ -43,6 +43,9 @@ if command -v ccache > /dev/null; then
     export NDK_CCACHE="$(command -v ccache)"
 fi
 
+echo "JAVA_HOME=${JAVA_HOME:-unset}"
+java -version 2>&1
+
 cd "$ROOT/src/android"
 chmod +x ./gradlew
 ./gradlew --no-daemon assembleVanillaRelease
