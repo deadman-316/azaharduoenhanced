@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.1.1 - Measurement fixes
+
+Still no change to emulation, rendering or caching behaviour.
+
+### Fixed
+- Measurement sessions ended as soon as the renderer was rebuilt, which happens when a save
+  state is loaded. Everything after the load went unrecorded (seen in the first device
+  logs, 2026-11-25). A session now lasts for the whole emulation run.
+
+### Added
+- `RendererDestroyed` marker event.
+- `SlowSwapBuffers` and `SlowSchedulerWait` events, recorded only when presenting a frame or
+  waiting for the Vulkan scheduler takes longer than 10 ms. Added to trace a recurring
+  100 ms stall seen in the first device logs that does not coincide with compilation.
+
 ## 0.1.0 - Baseline, instrumentation and diagnostics
 
 Based on upstream Azahar `2127.0.1`. **No emulation, rendering or caching behaviour is

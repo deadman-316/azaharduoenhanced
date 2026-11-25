@@ -4,6 +4,7 @@
 
 #include <mutex>
 #include <utility>
+#include "common/duo_stats.h"
 #include "common/microprofile.h"
 #include "common/thread.h"
 #include "video_core/renderer_vulkan/vk_instance.h"
@@ -77,6 +78,8 @@ void Scheduler::WaitWorker() {
     }
 
     MICROPROFILE_SCOPE(Vulkan_WaitForWorker);
+    Common::DuoStats::ScopedSlowEvent duo_timer{Common::DuoStats::Event::SlowSchedulerWait,
+                                                std::chrono::milliseconds(10)};
     DispatchWork();
 
     // Ensure the queue is drained.

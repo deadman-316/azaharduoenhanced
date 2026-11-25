@@ -45,6 +45,9 @@ constexpr std::array<const char*, NumEvents> EVENT_NAMES = {
     "PipelineWait",
     "DrawSkipped",
     "DriverCacheSaved",
+    "RendererDestroyed",
+    "SlowSwapBuffers",
+    "SlowSchedulerWait",
 };
 
 /// Events that represent compilation work or a thread blocked on it.

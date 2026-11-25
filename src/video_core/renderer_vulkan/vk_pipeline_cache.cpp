@@ -151,7 +151,7 @@ PipelineCache::~PipelineCache() {
     pipeline_workers.WaitForRequests();
     shader_workers.WaitForRequests();
     SaveDriverPipelineDiskCache();
-    Common::DuoStats::EndSession();
+    Common::DuoStats::Record(Common::DuoStats::Event::RendererDestroyed, GetProgramID());
 }
 
 void PipelineCache::LoadCache(const std::atomic_bool& stop_loading,

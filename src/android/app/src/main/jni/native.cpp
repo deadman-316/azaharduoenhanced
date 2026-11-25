@@ -16,6 +16,7 @@
 
 #include <core/hle/service/cfg/cfg.h>
 #include "audio_core/dsp_interface.h"
+#include "common/duo_stats.h"
 #include "common/arch.h"
 
 #if CITRA_ARCH(arm64)
@@ -212,6 +213,8 @@ static void TryShutdown() {
     Core::System& system{Core::System::GetInstance()};
 
     system.Shutdown();
+    // Azahar Duo Enhanced: the measurement session ends with the emulation run.
+    Common::DuoStats::EndSession();
     system.EjectCartridge();
 
     window.reset();

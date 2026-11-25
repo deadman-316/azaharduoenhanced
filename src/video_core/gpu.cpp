@@ -3,6 +3,7 @@
 // Refer to the LICENSE.txt file included.
 
 #include "common/archives.h"
+#include "common/duo_stats.h"
 #include "common/hacks/hack_manager.h"
 #include "common/microprofile.h"
 #include "core/core.h"
@@ -569,7 +570,11 @@ void GPU::VBlankCallback(std::uintptr_t user_data, s64 cycles_late) {
     impl->signal_interrupt(Service::GSP::InterruptId::PDC1, 0);
 
     // Present renderered frame.
-    impl->renderer->SwapBuffers();
+    {
+        Common::DuoStats::ScopedSlowEvent duo_timer{Common::DuoStats::Event::SlowSwapBuffers,
+                                                    std::chrono::milliseconds(10)};
+        impl->renderer->SwapBuffers();
+    }
 
     // Reschedule recurrent event
     impl->timing.ScheduleEvent(FRAME_TICKS - cycles_late, impl->vblank_event);
