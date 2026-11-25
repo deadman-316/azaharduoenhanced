@@ -29,8 +29,9 @@ published there.
 | Action | Result |
 | --- | --- |
 | Push to a `duo/**` branch | Signed APK attached to the workflow run (zip artifact, needs GitHub login) |
-| Push a tag `duo/vX.Y.Z` | The same, plus a GitHub Release with the APK as a direct download |
-| "Run workflow" button | Manual build of the selected branch |
+| "Run workflow" button with a release version such as `0.1.0` | The same, plus a GitHub Release tagged `duo/v0.1.0` with the APK as a direct download |
+| "Run workflow" button, version left empty | Manual test build of the selected branch |
+| Push a tag `duo/vX.Y.Z` | Same as a release run |
 
 Tag and branch names contain a slash on purpose: upstream's own workflows match `*`, which
 does not match names containing `/`, so they stay dormant in this fork.
@@ -68,7 +69,12 @@ uninstalling the app (and losing its app-private data) before a new build can be
 4. Repeat for all three secrets.
 5. Open the **Actions** tab. If GitHub shows a notice that workflows are disabled on this
    fork, enable them.
-6. In **Actions**, pick **duo-android**, then **Run workflow**, select the branch, and run.
+6. To publish a milestone: in **Actions**, pick **duo-android**, then **Run workflow**, select
+   the milestone branch, type the version (for example `0.1.0`) and run. The APK appears
+   under **Releases** when the run finishes.
+
+Releases are published by the repository owner pressing that button. The development
+sandbox can push branches but is not permitted to create tags or releases.
 
 Values are write-only once saved: GitHub never shows them again, to anyone.
 

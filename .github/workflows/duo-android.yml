@@ -1,6 +1,7 @@
 # Azahar Duo Enhanced: builds the signed ARM64 Android APK for this fork.
 # - Push to a duo/** branch or run manually: APK is attached to the workflow run as an artifact.
-# - Push a duo/v* tag: APK is also published as a GitHub Release for direct download.
+# - Run manually with a release version (or push a duo/v* tag): the APK is also published as a
+#   GitHub Release for direct download.
 # Signing credentials come only from repository secrets and are never echoed.
 
 name: duo-android
@@ -10,6 +11,11 @@ on:
     branches: [ "duo/**" ]
     tags: [ "duo/v*" ]
   workflow_dispatch:
+    inputs:
+      release_version:
+        description: "Publish a release with this version (for example 0.1.0). Leave empty for a test build."
+        required: false
+        default: ""
 
 permissions:
   contents: write
@@ -68,6 +74,7 @@ jobs:
           ANDROID_KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEYSTORE_PASS: ${{ secrets.ANDROID_KEYSTORE_PASS }}
+          DUO_RELEASE_VERSION: ${{ inputs.release_version }}
         run: ./duo/ci/build-android.sh
       - name: Upload APK artifact
         uses: actions/upload-artifact@v7
@@ -76,14 +83,20 @@ jobs:
           path: duo-artifacts/
           if-no-files-found: error
       - name: Publish GitHub Release
-        if: ${{ github.ref_type == 'tag' }}
+        if: ${{ github.ref_type == 'tag' || inputs.release_version != '' }}
         env:
           GH_TOKEN: ${{ github.token }}
+          DUO_RELEASE_VERSION: ${{ inputs.release_version }}
         run: |
-          version="${GITHUB_REF_NAME#duo/v}"
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            version="${GITHUB_REF_NAME#duo/v}"
+          else
+            version="$DUO_RELEASE_VERSION"
+          fi
           notes="duo/docs/release-notes/${version}.md"
           if [ ! -f "$notes" ]; then notes="duo/CHANGELOG.md"; fi
-          gh release create "$GITHUB_REF_NAME" duo-artifacts/* \
+          gh release create "duo/v${version}" duo-artifacts/* \
+            --target "$GITHUB_SHA" \
             --title "Azahar Duo Enhanced ${version}" \
             --notes-file "$notes" \
             --prerelease

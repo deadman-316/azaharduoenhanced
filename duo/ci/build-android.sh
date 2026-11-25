@@ -32,7 +32,13 @@ printf '%s' "$ANDROID_KEYSTORE_B64" | base64 --decode > "$ANDROID_KEYSTORE_FILE"
 unset ANDROID_KEYSTORE_B64
 
 # Version name shown in Android's app info.
-if [ "${GITHUB_REF_TYPE:-}" = "tag" ]; then
+if [ -n "${DUO_RELEASE_VERSION:-}" ]; then
+    if ! [[ "$DUO_RELEASE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+        echo "::error::Release version must look like 0.1.0"
+        exit 1
+    fi
+    export GIT_TAG_NAME="duo-$DUO_RELEASE_VERSION"
+elif [ "${GITHUB_REF_TYPE:-}" = "tag" ]; then
     export GIT_TAG_NAME="duo-${GITHUB_REF_NAME#duo/v}"
 else
     export GIT_TAG_NAME="duo-dev-$(git -C "$ROOT" rev-parse --short HEAD)"
