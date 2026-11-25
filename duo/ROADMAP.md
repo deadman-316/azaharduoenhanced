@@ -64,3 +64,30 @@ The original brief is in `duo/docs/roadmap-original.md`.
 
 Measurements must keep CPU submission times and actual display times separate, and must
 say so when the display timing extension is unavailable.
+
+## Highest performance priority (set by the owner, 2026-11-25): dual-screen frame loss
+
+Target: with both displays enabled, presentation consistency approximately equal to what
+is measured with the bottom display turned off.
+
+| Measure (steady gameplay, Super Mario 3D Land) | Bottom off (reference) | Bottom on (today) | Target, bottom on |
+| --- | --- | --- | --- |
+| Frames never shown | 0.2% | 7.9% to 9.0% | about 0.2% |
+| Median submit-to-display delay | 44 ms | 59 ms | 44 ms or lower |
+
+Frame losses are reported in two classes:
+
+- **Unavoidable at native speed**: the emulator produces 59.84 frames per second and the
+  panels show 59.73, so about one frame every 9 s (0.2%) cannot be shown.
+- **Avoidable**: everything above that floor.
+
+Order of work, each step only after the previous measurement:
+
+1. Owner's V-Sync on / off comparison with both displays enabled (no code change).
+2. Evenly spaced frame submission.
+3. Independent presentation scheduling per display.
+4. Correct refresh-rate requests for both windows, tolerant of fractional rates.
+5. Lower submit-to-display delay.
+
+Constraints: correct emulation speed, audio synchronisation and graphical accuracy are
+preserved. Shader precompilation and persistent cache work stay on the roadmap.
