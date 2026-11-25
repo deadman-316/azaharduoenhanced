@@ -34,7 +34,7 @@ Findings:
 - 62 of the 447 long frames overlap a pipeline compile, and they account for 13.9 s of the
   35.9 s of excess frame time.
 - The other 385 long frames do not overlap any compile. 136 frames are almost exactly
-  100 ms long, 131 of them after the 250 s mark, alternating with frames of about 36 ms.
+  100 ms long, 135 of them after the 250 s mark, alternating with frames of about 36 ms.
   The cause is not known. 0.1.1 adds probes to locate it.
 
 ## Sessions 2 to 4: warm cache
