@@ -5,7 +5,7 @@ The original brief is in `duo/docs/roadmap-original.md`.
 
 | Version | Milestone | Status |
 | --- | --- | --- |
-| 0.1 | Baseline fork, instrumentation and device diagnostics | Code complete; awaiting first CI build and device test |
+| 0.1 | Baseline fork, instrumentation and device diagnostics | Built and verified by CI (0.1.0); awaiting device test |
 | 0.2 | Full known-shader and pipeline precompilation before gameplay | Next |
 | 0.3 | Cache durability: automatic saving, corruption recovery, driver-specific separation | Planned |
 | 0.4 | Parallel shader regeneration and runtime compilation scheduling | Planned |
