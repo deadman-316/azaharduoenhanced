@@ -94,6 +94,17 @@ std::string BuildDuoDeviceReport(const Instance& instance, u64 title_id,
     add("shader_clip_distance", instance.IsShaderClipDistanceSupported());
     add("timeline_semaphore", instance.IsTimelineSemaphoreSupported());
 
+    out += "\n[presentation timing]\n";
+    add("display_timing_extension_enabled", instance.IsDisplayTimingSupported());
+    if (!instance.IsDisplayTimingSupported()) {
+        out += "NOTE: VK_GOOGLE_display_timing is unavailable with this driver. present.csv will\n"
+               "contain only CPU-side submission times ('present' rows) and no actual display\n"
+               "times ('displayed' rows). Display refresh periods will be reported as 0.\n";
+    }
+    add("async_presentation", Settings::values.async_presentation.GetValue());
+    add("use_vsync", Settings::values.use_vsync.GetValue());
+    add("frame_limit_percent", Settings::GetFrameLimit());
+
     out += "\n[settings]\n";
     add("async_shader_compilation", Settings::values.async_shader_compilation.GetValue());
     add("use_disk_shader_cache", Settings::values.use_disk_shader_cache.GetValue());

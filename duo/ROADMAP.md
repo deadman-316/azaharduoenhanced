@@ -50,3 +50,17 @@ The original brief is in `duo/docs/roadmap-original.md`.
   concatenation.
 - Standalone preparation without launching gameplay; later, whole-library batch preparation
   while charging, with cancellation and thermal safeguards.
+
+## Frame pacing: candidate fixes, not to be implemented until diagnostics confirm the cause
+
+- Independent presentation scheduling for each display.
+- Secondary-display waits must not block the emulation thread.
+- Primary display as the presentation timing reference.
+- Android refresh-rate detection with tolerance for fractional rates (upstream requires a
+  mode reporting exactly 60.0).
+- Matching both displays to the same refresh rate where supported, as a switchable option.
+- Handling the 3DS's ~59.83 Hz against the display's rate without judder, audio problems or
+  wrong emulation speed.
+
+Measurements must keep CPU submission times and actual display times separate, and must
+say so when the display timing extension is unavailable.
