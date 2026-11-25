@@ -179,10 +179,11 @@ void Swapchain::Present() {
 }
 
 void Swapchain::DuoPollDisplayTiming() {
-    // Results are buffered by the platform, so asking every few presents is enough and keeps
-    // the number of calls into the window system low.
+    // Asked after every present: with FIFO presentation the platform's small history of
+    // results was found to overflow when polled every fourth present (device logs,
+    // 2026-11-25), losing half of the reports.
     if (!instance.IsDisplayTimingSupported() || !swapchain || needs_recreation ||
-        (duo_present_id % 4) != 0 || !Common::DuoStats::IsActive()) {
+        !Common::DuoStats::IsActive()) {
         return;
     }
     {

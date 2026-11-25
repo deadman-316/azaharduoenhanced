@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.3 - Diagnostics fix
+
+- Display timing reports are now collected after every present. Collected every fourth
+  present, half of them were lost when V-Sync (FIFO) was on, which made frames look as if
+  they had not been shown.
+
 ## 0.1.2 - Frame pacing diagnostics
 
 Diagnostics only. Emulation, rendering and caching logic are unchanged. One difference from
