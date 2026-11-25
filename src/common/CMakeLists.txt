@@ -12,6 +12,8 @@ add_library(citra_common STATIC EXCLUDE_FROM_ALL
     assert.h
     atomic_ops.h
     detached_tasks.cpp
+    duo_stats.cpp
+    duo_stats.h
     detached_tasks.h
     bit_field.h
     bit_field.natvis

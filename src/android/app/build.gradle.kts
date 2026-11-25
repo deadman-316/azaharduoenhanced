@@ -21,7 +21,8 @@ plugins {
  * next 680 years.
  */
 val autoVersion = (((System.currentTimeMillis() / 1000) - 1451606400) / 10).toInt()
-val abiFilter = listOf("arm64-v8a", "x86_64")
+// Azahar Duo Enhanced: this fork targets one ARM64 handheld, so only arm64-v8a is built.
+val abiFilter = listOf("arm64-v8a")
 
 val downloadedJniLibsPath = "${layout.buildDirectory.get().asFile.path}/downloadedJniLibs"
 
@@ -63,7 +64,10 @@ android {
     defaultConfig {
         // The application ID refers to Lime3DS to allow for
         // the Play Store listing, which was originally set up for Lime3DS, to still be used.
-        applicationId = "org.azahar_emu.azahar"
+        // Azahar Duo Enhanced: independent fork with its own package ID so that it installs
+        // alongside official Azahar and never shares its app data. Do not change this value
+        // between milestones, or updates will install as a separate app.
+        applicationId = "org.azaharduo.enhanced"
         minSdk = 29
         targetSdk = 37
         versionCode = autoVersion

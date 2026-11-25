@@ -52,4 +52,20 @@ if (ENABLE_FREECAM)
     set(COMBINED "${COMBINED}ENABLE_FREECAM")
 endif()
 string(MD5 SHADER_CACHE_VERSION "${COMBINED}")
+
+# Azahar Duo Enhanced: several of the files hashed above carry instrumentation and cache
+# management changes that do not alter the generated shaders. To keep shader caches
+# interchangeable with the upstream release this fork is based on, the hash of the pristine
+# upstream sources is pinned in duo/upstream_shader_cache_version.txt.
+# - Regenerate that file from the untouched upstream tag on every rebase.
+# - Delete it if this fork ever changes what the shader generators emit.
+set(DUO_PINNED_HASH_FILE "${CMAKE_SOURCE_DIR}/duo/upstream_shader_cache_version.txt")
+if (EXISTS "${DUO_PINNED_HASH_FILE}")
+    file(STRINGS "${DUO_PINNED_HASH_FILE}" DUO_PINNED_HASH LIMIT_COUNT 1)
+    string(STRIP "${DUO_PINNED_HASH}" DUO_PINNED_HASH)
+    if (DUO_PINNED_HASH MATCHES "^[0-9a-f]+$")
+        message(STATUS "Duo: pinning shader cache version ${DUO_PINNED_HASH} (computed ${SHADER_CACHE_VERSION})")
+        set(SHADER_CACHE_VERSION "${DUO_PINNED_HASH}")
+    endif()
+endif()
 configure_file("${CMAKE_SOURCE_DIR}/src/common/scm_rev.cpp.in" "scm_rev.cpp" @ONLY)

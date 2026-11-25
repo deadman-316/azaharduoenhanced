@@ -5,6 +5,7 @@
 #include <boost/container/static_vector.hpp>
 
 #include "common/common_paths.h"
+#include "common/duo_stats.h"
 #include "common/file_util.h"
 #include "common/logging/log.h"
 #include "common/microprofile.h"
@@ -150,13 +151,25 @@ PipelineCache::~PipelineCache() {
     pipeline_workers.WaitForRequests();
     shader_workers.WaitForRequests();
     SaveDriverPipelineDiskCache();
+    Common::DuoStats::EndSession();
 }
 
 void PipelineCache::LoadCache(const std::atomic_bool& stop_loading,
                               const VideoCore::DiskResourceLoadCallback& callback) {
     const bool flag_set = SetCacheLoadFlag(GetProgramID());
+
+    namespace Duo = Common::DuoStats;
+    const auto duo_start = Duo::Clock::now();
+    Duo::SetLoading(true);
+    Duo::Record(Duo::Event::CacheLoadBegin, GetProgramID());
+
     LoadDriverPipelineDiskCache(stop_loading, callback);
     LoadDiskCache(stop_loading, callback);
+
+    Duo::Record(Duo::Event::CacheLoadEnd, GetProgramID(), Duo::Clock::now() - duo_start, 0,
+                curr_disk_cache ? curr_disk_cache->PendingCachedPipelines() : 0);
+    Duo::SetLoading(false);
+
     if (flag_set) {
         QueueClearCacheLoadFlag(GetProgramID());
     }
@@ -190,11 +203,21 @@ void PipelineCache::SwitchCache(u64 title_id, const std::atomic_bool& stop_loadi
     if (curr_disk_cache) {
         SaveDriverPipelineDiskCache();
     }
+    namespace Duo = Common::DuoStats;
+    const auto duo_start = Duo::Clock::now();
+    Duo::SetLoading(true);
+    Duo::Record(Duo::Event::CacheLoadBegin, title_id);
+
     SetProgramID(title_id);
     LoadDriverPipelineDiskCache(stop_loading, nullptr);
 
     // Switch the disk shader cache after driver cache is switched
     SwitchDiskCache(title_id, stop_loading, callback);
+
+    Duo::Record(Duo::Event::CacheLoadEnd, title_id, Duo::Clock::now() - duo_start, 0,
+                curr_disk_cache ? curr_disk_cache->PendingCachedPipelines() : 0);
+    Duo::SetLoading(false);
+
     if (flag_set) {
         QueueClearCacheLoadFlag(title_id);
     }
@@ -220,8 +243,13 @@ bool PipelineCache::SetCacheLoadFlag(u64 title_id) {
 }
 
 void PipelineCache::QueueClearCacheLoadFlag(u64 title_id) {
-    pipeline_workers.QueueWork([path = GetLoadFlagPath(title_id), disk_cache = curr_disk_cache] {
+    pipeline_workers.QueueWork([path = GetLoadFlagPath(title_id), disk_cache = curr_disk_cache,
+                                title_id, pending = curr_disk_cache->PendingCachedPipelines(),
+                                queued_at = Common::DuoStats::Clock::now()] {
         disk_cache->WaitLoadCachedPipelines();
+        // Duration = how long after the load returned the last cached pipeline finished.
+        Common::DuoStats::Record(Common::DuoStats::Event::CachedPipelinesReady, title_id,
+                                 Common::DuoStats::Clock::now() - queued_at, 0, pending);
         FileUtil::Delete(path);
     });
 }
@@ -330,12 +358,15 @@ void PipelineCache::SaveDriverPipelineDiskCache() {
         return;
     }
 
+    const auto duo_start = Common::DuoStats::Clock::now();
     const vk::Device device = instance.GetDevice();
     const auto cache_data = device.getPipelineCacheData(*driver_pipeline_cache);
     if (cache_file.WriteBytes(cache_data.data(), cache_data.size()) != cache_data.size()) {
         LOG_ERROR(Render_Vulkan, "Error during pipeline cache write");
         return;
     }
+    Common::DuoStats::Record(Common::DuoStats::Event::DriverCacheSaved, program_id,
+                             Common::DuoStats::Clock::now() - duo_start, 0, cache_data.size());
 }
 
 void PipelineCache::LoadDiskCache(const std::atomic_bool& stop_loading,
@@ -523,6 +554,7 @@ bool PipelineCache::BindPipeline(PipelineInfo& info, bool wait_built) {
 
         if (pipeline_dirty) {
             if (!pipeline->IsDone()) {
+                Common::DuoStats::ScopedEvent duo_timer{Common::DuoStats::Event::PipelineWait};
                 pipeline->WaitDone();
             }
             cmdbuf.bindPipeline(vk::PipelineBindPoint::eGraphics, pipeline->Handle());

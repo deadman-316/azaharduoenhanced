@@ -330,6 +330,12 @@ public:
         return *pipeline;
     }
 
+    /// Azahar Duo Enhanced: marks this pipeline as reconstructed from the disk cache.
+    /// Only used to label instrumentation events.
+    void MarkPreloaded() noexcept {
+        duo_preloaded = true;
+    }
+
 private:
     const Instance& instance;
     RenderManager& renderpass_cache;
@@ -342,6 +348,7 @@ private:
     PipelineInfo info;
     std::array<Shader*, 3> stages;
     bool is_pending{};
+    bool duo_preloaded{};
 };
 
 } // namespace Vulkan

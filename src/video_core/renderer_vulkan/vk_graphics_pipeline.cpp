@@ -2,6 +2,7 @@
 // Licensed under GPLv3 or any later version
 // Refer to the LICENSE.txt file included.
 
+#include "common/duo_stats.h"
 #include <boost/container/static_vector.hpp>
 
 #include "common/alignment.h"
@@ -305,12 +306,26 @@ bool GraphicsPipeline::Build(bool fail_on_compile_required) {
         pipeline_info.flags |= vk::PipelineCreateFlagBits::eFailOnPipelineCompileRequiredEXT;
     }
 
+    namespace Duo = Common::DuoStats;
+    const bool duo_active = Duo::IsActive();
+    const u8 duo_flags = duo_preloaded ? Duo::FlagPreloaded : u8{0};
+    const u64 duo_id = duo_active ? info.Hash() : 0;
+    const auto duo_start = duo_active ? Duo::Clock::now() : Duo::Clock::time_point{};
+
     auto result = instance.GetDevice().createGraphicsPipelineUnique(pipeline_cache, pipeline_info);
+
+    const auto duo_elapsed = duo_active ? Duo::Clock::now() - duo_start : Duo::Clock::duration{};
     if (result.result == vk::Result::eSuccess) {
+        Duo::Record(fail_on_compile_required ? Duo::Event::PipelineDriverCacheHit
+                                             : Duo::Event::PipelineCompile,
+                    duo_id, duo_elapsed, duo_flags);
         pipeline = std::move(result.value);
     } else if (result.result == vk::Result::eErrorPipelineCompileRequiredEXT) {
+        Duo::Record(Duo::Event::PipelineDriverCacheMiss, duo_id, duo_elapsed, duo_flags);
         return false;
     } else {
+        Duo::Record(Duo::Event::PipelineFailed, duo_id, duo_elapsed, duo_flags,
+                    static_cast<u64>(static_cast<s64>(result.result)));
         UNREACHABLE_MSG("Graphics pipeline creation failed!");
     }
 

@@ -2,6 +2,7 @@
 // Licensed under GPLv2 or any later version
 // Refer to the misc/licenses/gplv2.txt file included.
 
+#include "common/duo_stats.h"
 #include <memory>
 #include <SPIRV/GlslangToSpv.h>
 #include <glslang/Include/ResourceLimits.h>
@@ -166,6 +167,14 @@ std::vector<u32> CompileGLSL(std::string_view code, vk::ShaderStageFlagBits stag
         return {};
     }
 
+    const u8 duo_stage_flag = stage == vk::ShaderStageFlagBits::eVertex
+                                  ? Common::DuoStats::FlagStageVertex
+                                  : stage == vk::ShaderStageFlagBits::eFragment
+                                        ? Common::DuoStats::FlagStageFragment
+                                        : Common::DuoStats::FlagStageGeometry;
+    Common::DuoStats::ScopedEvent duo_timer{Common::DuoStats::Event::GlslCompile, 0,
+                                            duo_stage_flag};
+
     EProfile profile = ECoreProfile;
     EShMessages messages =
         static_cast<EShMessages>(EShMsgDefault | EShMsgSpvRules | EShMsgVulkanRules);
@@ -226,6 +235,7 @@ vk::ShaderModule CompileSPV(std::span<const u32> code, vk::Device device) {
         .pCode = code.data(),
     };
 
+    Common::DuoStats::ScopedEvent duo_timer{Common::DuoStats::Event::ShaderModuleCreate};
     try {
         return device.createShaderModule(shader_info);
     } catch (vk::SystemError& err) {

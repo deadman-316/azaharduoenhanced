@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include <atomic>
 #include <mutex>
 #include <optional>
 #include <unordered_set>
@@ -42,6 +43,12 @@ public:
 
     /// Waits until the pipelines queued while loading the cache are built
     void WaitLoadCachedPipelines();
+
+    /// Azahar Duo Enhanced: number of cached pipelines whose build was still queued when the
+    /// pipeline cache finished loading. Only used to label instrumentation events.
+    std::size_t PendingCachedPipelines() const {
+        return duo_pending_at_load.load(std::memory_order_relaxed);
+    }
 
     u64 GetProgramID() const {
         return title_id;
@@ -361,6 +368,7 @@ private:
         graphics_pipelines;
     std::unordered_set<u64> known_graphic_pipelines;
     std::vector<GraphicsPipeline*> loaded_cached_pipelines;
+    std::atomic<std::size_t> duo_pending_at_load{0};
 };
 
 } // namespace Vulkan

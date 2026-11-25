@@ -64,3 +64,8 @@ GIT-TAG
 
 # verify-release.sh downloads
 verify/
+# Azahar Duo Enhanced: build outputs and signing material must never be committed
+duo-artifacts/
+*.jks
+*.keystore
+github-secrets.txt

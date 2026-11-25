@@ -2,7 +2,10 @@
 // Licensed under GPLv3 or any later version
 // Refer to the LICENSE.txt file included.
 
+#include <algorithm>
+#include <thread>
 #include "common/alignment.h"
+#include "common/duo_stats.h"
 #include "common/literals.h"
 #include "common/logging/log.h"
 #include "common/math_util.h"
@@ -14,6 +17,7 @@
 #include "video_core/pica/pica_core.h"
 #include "video_core/renderer_vulkan/pica_to_vk.h"
 #include "video_core/renderer_vulkan/renderer_vulkan.h"
+#include "video_core/renderer_vulkan/vk_duo_report.h"
 #include "video_core/renderer_vulkan/vk_instance.h"
 #include "video_core/renderer_vulkan/vk_rasterizer.h"
 #include "video_core/renderer_vulkan/vk_scheduler.h"
@@ -160,6 +164,12 @@ void RasterizerVulkan::LoadDefaultDiskResources(
     if (callback) {
         callback(VideoCore::LoadCallbackStage::Prepare, 0, 0, "");
     }
+
+    // Azahar Duo Enhanced: start a measurement session for this title.
+    Common::DuoStats::BeginSession(
+        program_id,
+        BuildDuoDeviceReport(instance, program_id,
+                             std::max(std::thread::hardware_concurrency(), 2U) / 2));
 
     pipeline_cache.SetAccurateMul(accurate_mul);
     if (pipeline_cache.LoadCacheCrashed(program_id)) {
@@ -490,6 +500,7 @@ bool RasterizerVulkan::AccelerateDrawBatchInternal(bool is_indexed) {
 
     const bool wait_built = !async_shaders || regs.pipeline.num_vertices <= 6;
     if (!pipeline_cache.BindPipeline(pipeline_info, wait_built)) {
+        Common::DuoStats::Record(Common::DuoStats::Event::DrawSkipped);
         return true;
     }
 

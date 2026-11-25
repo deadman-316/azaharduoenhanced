@@ -11,6 +11,7 @@
 #include <thread>
 #include <fmt/chrono.h>
 #include <fmt/format.h>
+#include "common/duo_stats.h"
 #include "common/file_util.h"
 #include "common/settings.h"
 #include "core/core_timing.h"
@@ -106,6 +107,9 @@ void PerfStats::EndSystemFrame() {
 
     previous_frame_length = frame_end - previous_frame_end;
     previous_frame_end = frame_end;
+
+    // Azahar Duo Enhanced: memory-only sample, written to disk by a background thread.
+    Common::DuoStats::RecordSystemFrame(previous_frame_length, frame_time);
 }
 
 void PerfStats::EndGameFrame() {
@@ -114,6 +118,8 @@ void PerfStats::EndGameFrame() {
     game_frames += 1;
     total_game_frames += 1;
     PerfStats::game_frames_updated = true;
+
+    Common::DuoStats::RecordGameFrame();
 }
 
 double PerfStats::GetMeanFrametime() const {

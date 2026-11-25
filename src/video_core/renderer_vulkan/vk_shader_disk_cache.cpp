@@ -3,6 +3,7 @@
 // Refer to the LICENSE.txt file included.
 
 #include "common/common_paths.h"
+#include "common/duo_stats.h"
 #include "common/file_util.h"
 #include "common/scm_rev.h"
 #include "common/settings.h"
@@ -37,6 +38,7 @@ namespace Vulkan {
 
 using namespace Pica::Shader::Generator;
 using namespace Pica::Shader;
+namespace Duo = Common::DuoStats;
 
 static VideoCore::DiskResourceLoadCallback MakeThrottledCallback(
     VideoCore::DiskResourceLoadCallback original) {
@@ -100,6 +102,7 @@ std::optional<std::pair<u64, Shader* const>> ShaderDiskCache::UseProgrammableVer
     if (new_config) {
 
         LOG_NEW_OBJECT(Render_Vulkan, "New VS config {:016X}", config_hash);
+        Duo::Record(Duo::Event::NewShaderConfig, config_hash, {}, Duo::FlagStageVertex);
 
         ExtraVSConfig extra_config = parent.CalcExtraConfig(config);
 
@@ -156,12 +159,17 @@ std::optional<std::pair<u64, Shader* const>> ShaderDiskCache::UseFragmentShader(
 
     if (new_shader) {
         LOG_NEW_OBJECT(Render_Vulkan, "New FS config {:016X}", fs_config_hash);
+        Duo::Record(Duo::Event::NewShaderConfig, fs_config_hash, {}, Duo::FlagStageFragment);
 
         parent.shader_workers.QueueWork([fs_config, user, this, &shader, fs_config_hash]() {
             std::vector<u32> spirv;
             const bool use_spirv = parent.profile.vk_use_spirv_generator;
             if (use_spirv && !fs_config.UsesSpirvIncompatibleConfig()) {
-                spirv = SPIRV::GenerateFragmentShader(fs_config, parent.profile);
+                {
+                    Duo::ScopedEvent duo_timer{Duo::Event::SpirvGenerate, fs_config_hash,
+                                               Duo::FlagStageFragment};
+                    spirv = SPIRV::GenerateFragmentShader(fs_config, parent.profile);
+                }
                 shader.module = CompileSPV(spirv, parent.instance.GetDevice());
             } else {
                 const std::string code =
@@ -211,6 +219,7 @@ std::optional<std::pair<u64, Shader* const>> ShaderDiskCache::UseFixedGeometrySh
 
         if (new_shader) {
             LOG_NEW_OBJECT(Render_Vulkan, "New GS config {:016X}", gs_config_hash);
+            Duo::Record(Duo::Event::NewShaderConfig, gs_config_hash, {}, Duo::FlagStageGeometry);
 
             parent.shader_workers.QueueWork([gs_config, this, &shader, gs_config_hash]() {
                 ExtraFixedGSConfig extra;
@@ -257,6 +266,7 @@ GraphicsPipeline* ShaderDiskCache::GetPipeline(const PipelineInfo& info) {
 
     if (known_graphic_pipelines.emplace(hash).second) {
         LOG_NEW_OBJECT(Render_Vulkan, "New Pipeline {:016X}", hash);
+        Duo::Record(Duo::Event::NewPipelineConfig, hash);
 
         PLConfigEntry entry{
             .version = PLConfigEntry::EXPECTED_VERSION,
@@ -689,6 +699,8 @@ bool ShaderDiskCache::InitVSCache(const std::atomic_bool& stop_loading,
                     programmable_vertex_cache.try_emplace(curr.Id(), parent.instance);
                 if (new_program) {
                     LOG_DEBUG(Render_Vulkan, "    compiling SPIRV.");
+                    Duo::Record(Duo::Event::SpirvCacheLoad, curr.Id(), {},
+                                Duo::FlagStageVertex | Duo::FlagPreloaded, spirv_size);
 
                     const auto spirv = std::span<const u32>(
                         reinterpret_cast<const u32*>(spirv_data), spirv_size / sizeof(u32));
@@ -990,6 +1002,8 @@ bool ShaderDiskCache::InitFSCache(const std::atomic_bool& stop_loading,
                     fragment_shaders.try_emplace(curr.Id(), parent.instance);
                 if (new_program) {
                     LOG_DEBUG(Render_Vulkan, "    compiling SPIRV.");
+                    Duo::Record(Duo::Event::SpirvCacheLoad, curr.Id(), {},
+                                Duo::FlagStageFragment | Duo::FlagPreloaded, spirv_size);
 
                     const auto spirv = std::span<const u32>(
                         reinterpret_cast<const u32*>(spirv_data), spirv_size / sizeof(u32));
@@ -1065,7 +1079,11 @@ bool ShaderDiskCache::InitFSCache(const std::atomic_bool& stop_loading,
             !entry->fs_config.UsesSpirvIncompatibleConfig()) {
             // Use SPIRV generator directly
 
-            spirv = SPIRV::GenerateFragmentShader(entry->fs_config, parent.profile);
+            {
+                Duo::ScopedEvent duo_timer{Duo::Event::SpirvGenerate, fs_config_hash,
+                                           Duo::FlagStageFragment | Duo::FlagPreloaded};
+                spirv = SPIRV::GenerateFragmentShader(entry->fs_config, parent.profile);
+            }
             shader.module = CompileSPV(spirv, parent.instance.GetDevice());
         } else {
             // Use GLSL generator then convert to SPIRV
@@ -1223,6 +1241,8 @@ bool ShaderDiskCache::InitGSCache(const std::atomic_bool& stop_loading,
                     fixed_geometry_shaders.try_emplace(curr.Id(), parent.instance);
                 if (new_program) {
                     LOG_DEBUG(Render_Vulkan, "    compiling SPIRV.");
+                    Duo::Record(Duo::Event::SpirvCacheLoad, curr.Id(), {},
+                                Duo::FlagStageGeometry | Duo::FlagPreloaded, spirv_size);
 
                     const auto spirv = std::span<const u32>(
                         reinterpret_cast<const u32*>(spirv_data), spirv_size / sizeof(u32));
@@ -1465,6 +1485,7 @@ bool ShaderDiskCache::InitPLCache(const std::atomic_bool& stop_loading,
             it_pl.value() = std::make_unique<GraphicsPipeline>(
                 parent.instance, parent.renderpass_cache, info, *parent.driver_pipeline_cache,
                 *parent.pipeline_layout, shaders, &parent.pipeline_workers);
+            it_pl.value()->MarkPreloaded();
 
             // The cached shaders are compiled above, so a pipeline that is not built yet was queued
             if (!it_pl.value()->TryBuild(false)) {
@@ -1477,6 +1498,8 @@ bool ShaderDiskCache::InitPLCache(const std::atomic_bool& stop_loading,
             MALFORMED_DISK_CACHE;
         }
     }
+
+    duo_pending_at_load.store(loaded_cached_pipelines.size(), std::memory_order_relaxed);
 
     // Switch to append mode to receive new entries.
     return pl_cache.SwitchMode(CacheFile::CacheOpMode::APPEND);
