@@ -153,6 +153,9 @@ struct State {
     std::mutex present_mutex;
     std::vector<PresentRow> present_pending;
 
+    std::mutex note_mutex;
+    std::string note_pending;
+
     // Per-frame cost accumulators, drained by RecordSystemFrame.
     std::array<std::atomic<u64>, NumCosts> cost_ns{};
     std::array<std::atomic<u64>, NumCosts> cost_amount{};
@@ -184,7 +187,10 @@ struct State {
     FileUtil::IOFile events_file;
     FileUtil::IOFile frames_file;
     FileUtil::IOFile present_file;
+    FileUtil::IOFile notes_file;
 };
+
+constexpr std::size_t NOTE_LIMIT = 256 * 1024;
 
 constexpr std::array<const char*, NumCosts> COST_NAMES = {
     "swap", "frame_wait", "gpu_wait", "worker_wait",
@@ -397,6 +403,16 @@ void Flush(State& s) {
         s.present_file.Flush();
     }
 
+    std::string notes;
+    {
+        std::scoped_lock lock{s.note_mutex};
+        notes.swap(s.note_pending);
+    }
+    if (!notes.empty() && s.notes_file.IsGood()) {
+        s.notes_file.WriteString(notes);
+        s.notes_file.Flush();
+    }
+
     FileUtil::WriteStringToFile(true, s.dir + "summary.txt", BuildSummary(s));
 }
 
@@ -488,6 +504,7 @@ void BeginSession(u64 title_id, const std::string& device_report) {
             "limiter_ms,file_read_ms,tex_upload_ms,jit_invalidate_ms,file_read_bytes,"
             "tex_uploads,jit_invalidated_bytes\n");
     }
+    s.notes_file = FileUtil::IOFile(s.dir + "notes.txt", "ab");
     s.present_file = FileUtil::IOFile(s.dir + "present.csv", "ab");
     if (s.present_file.IsGood()) {
         s.present_file.WriteString("t_ms,window,kind,present_id,queue_wait_ms,acquire_ms,"
@@ -524,6 +541,7 @@ void EndSession() {
     s.events_file.Close();
     s.frames_file.Close();
     s.present_file.Close();
+    s.notes_file.Close();
 }
 
 bool IsActive() {
@@ -646,6 +664,24 @@ void RecordGameFrame() {
         .work_us = 0,
         .kind = 1,
     });
+}
+
+void AddNote(std::string text) {
+    State& s = GetState();
+    // Deliberately accepted while no session is active: the Android activity reports display
+    // information before emulation (and therefore the session) has started.
+    const bool active = s.active.load(std::memory_order_relaxed);
+    const double t_ms = active ? Ms(NowNs(s)) : -1.0;
+    std::scoped_lock lock{s.note_mutex};
+    if (s.note_pending.size() + text.size() > NOTE_LIMIT) {
+        return;
+    }
+    fmt::format_to(std::back_inserter(s.note_pending), "--- t_ms={:.3f}{}\n", t_ms,
+                   active ? "" : " (before session start)");
+    s.note_pending += text;
+    if (!text.empty() && text.back() != '\n') {
+        s.note_pending += '\n';
+    }
 }
 
 void AddFrameCost(Cost cost, Clock::duration duration, u64 amount) {

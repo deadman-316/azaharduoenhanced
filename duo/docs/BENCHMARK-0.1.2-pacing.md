@@ -16,14 +16,18 @@ levels once beforehand).
 
 ## Runs
 
+The owner's device was set to 60 Hz for all earlier runs, yet emulation-thread frame
+intervals were quantised to 8.33 ms. The first job is to establish what each display is
+really doing, so start with the setup you normally use.
+
 | Run | Setup | Question it answers |
 | --- | --- | --- |
-| P1 | Both screens at 120 Hz, normal dual-screen layout, load by in-game save | Baseline |
-| P2 | Both screens at 60 Hz (Android display settings), otherwise as P1 | Does the 8/25 ms cadence disappear at 60 Hz? |
-| P3 | 120 Hz, bottom screen disabled or single-screen layout, otherwise as P1 | Does the second swapchain disturb pacing? |
+| P1 | Your normal setup (system set to 60 Hz), dual-screen layout, load by in-game save | What refresh rate is each display really at, and what cadence reaches each screen? |
+| P2 | System set to 120 Hz, otherwise as P1 | Does the system setting change what the app gets? |
+| P3 | As P1 but bottom screen disabled or single-screen layout | Does the second swapchain cause the 8.33 ms steps? |
 | P4 | As P1 but load a save state instead of the in-game save | Do save states behave differently? |
 
-If a setting is not available (for example no 60 Hz option), skip that run and say so.
+If a setting is not available, skip that run and say so.
 
 ## What to send back
 
@@ -31,6 +35,11 @@ Zip the new folders under `log/duo/` and say which folder is which run, with you
 notes.
 
 ## How it will be read
+
+- `notes.txt`: Android's active mode and refresh rate for each display, and what each
+  window asked for.
+- `events.csv`, `SwapchainCreated`: the refresh period the Vulkan swapchain reports for
+  each window.
 
 - `present.csv`, `displayed` rows per window: the interval between consecutive display
   times is what the screen showed. Steady 16.67 ms means even pacing; a mix of 8.3 and

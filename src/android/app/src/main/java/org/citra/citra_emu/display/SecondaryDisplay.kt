@@ -19,6 +19,7 @@ import org.citra.citra_emu.NativeLibrary
 import org.citra.citra_emu.features.settings.model.BooleanSetting
 import org.citra.citra_emu.features.settings.model.CitraSettings
 import org.citra.citra_emu.features.settings.model.IntSetting
+import org.citra.citra_emu.utils.DuoDisplayDiagnostics
 import org.citra.citra_emu.utils.Log
 
 class SecondaryDisplay(val context: Context) : DisplayManager.DisplayListener {
@@ -199,6 +200,11 @@ class SecondaryDisplayPresentation(
                 height: Int
             ) {
                 Log.debug("SecondaryDisplay Surface changed: ${width}x$height")
+                DuoDisplayDiagnostics.log(
+                    context,
+                    "SecondaryDisplay surfaceChanged ${width}x$height (secondary window)",
+                    window
+                )
                 parent.updateSurface()
             }
 

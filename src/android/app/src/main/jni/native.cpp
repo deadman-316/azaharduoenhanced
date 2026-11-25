@@ -553,6 +553,12 @@ void Java_org_citra_citra_1emu_NativeLibrary_secondarySurfaceDestroyed(
     LOG_INFO(Frontend, "Secondary Surface Destroyed");
 }
 
+// Azahar Duo Enhanced: free-form diagnostics text from the Android side (display modes etc.).
+void Java_org_citra_citra_1emu_NativeLibrary_duoNote(JNIEnv* env, [[maybe_unused]] jobject obj,
+                                                     jstring j_text) {
+    Common::DuoStats::AddNote(GetJString(env, j_text));
+}
+
 void Java_org_citra_citra_1emu_NativeLibrary_surfaceDestroyed([[maybe_unused]] JNIEnv* env,
                                                               [[maybe_unused]] jobject obj) {
     std::scoped_lock lock(surface_mutex);

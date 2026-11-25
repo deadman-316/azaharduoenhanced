@@ -20,6 +20,9 @@ the display's own report of when the image was shown can be collected.
   sleep (`limiter`), file reads with byte count (`file_read`), texture uploads with count
   (`tex_upload`) and CPU JIT cache invalidations (`jit_invalidate`).
 - `summary.txt` totals for the same categories.
+- `notes.txt`: what Android reports about every display (active mode and refresh rate,
+  supported modes) and what the main and secondary windows requested, captured when the
+  emulation screen opens, when it gains focus and when the secondary surface changes.
 - `SwapchainCreated` event per window with present mode, image count, size and the
   display's refresh period; `JitCacheInvalidated` event.
 

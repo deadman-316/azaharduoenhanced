@@ -51,6 +51,7 @@ import org.citra.citra_emu.ui.main.MainActivity
 import org.citra.citra_emu.utils.BuildUtil
 import org.citra.citra_emu.utils.CitraDirectoryUtils
 import org.citra.citra_emu.utils.DirectoryInitialization
+import org.citra.citra_emu.utils.DuoDisplayDiagnostics
 import org.citra.citra_emu.utils.EmulationLifecycleUtil
 import org.citra.citra_emu.utils.EmulationMenuSettings
 import org.citra.citra_emu.utils.FileBrowserHelper
@@ -102,6 +103,7 @@ class EmulationActivity : AppCompatActivity() {
         requestWindowFeature(Window.FEATURE_NO_TITLE)
 
         RefreshRateUtil.enforceRefreshRate(this, sixtyHz = true)
+        DuoDisplayDiagnostics.log(this, "EmulationActivity.onCreate (main window)", window)
 
         ThemeUtil.setTheme(this)
 
@@ -299,6 +301,11 @@ class EmulationActivity : AppCompatActivity() {
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         enableFullscreenImmersive()
         super.onWindowFocusChanged(hasFocus)
+        DuoDisplayDiagnostics.log(
+            this,
+            "EmulationActivity.onWindowFocusChanged hasFocus=$hasFocus (main window)",
+            window
+        )
     }
 
     public override fun onRestart() {

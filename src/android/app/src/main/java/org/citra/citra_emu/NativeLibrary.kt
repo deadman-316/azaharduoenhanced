@@ -175,6 +175,9 @@ object NativeLibrary {
      */
     external fun run(path: String)
 
+    // Azahar Duo Enhanced: appends diagnostics text to the current measurement session.
+    external fun duoNote(text: String)
+
     // Surface Handling
     external fun surfaceChanged(surf: Surface)
     external fun surfaceDestroyed()

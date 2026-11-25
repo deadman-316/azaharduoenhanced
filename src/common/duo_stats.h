@@ -130,6 +130,11 @@ void RecordPresent(u8 window, u64 present_id, Clock::duration queue_wait, Clock:
 /// VK_GOOGLE_display_timing. Times are CLOCK_MONOTONIC nanoseconds. No disk I/O.
 void RecordDisplayed(u8 window, u64 present_id, u64 actual_ns, u64 earliest_ns, u64 margin_ns);
 
+/// Appends free-form diagnostic text (for example Android display information) to
+/// notes.txt in the session folder. Text given before a session starts is kept, up to a
+/// small limit, and written when the next session begins. Thread-safe. No disk I/O.
+void AddNote(std::string text);
+
 /// RAII timer that adds its elapsed time to a per-frame cost category.
 class ScopedCost {
 public:
