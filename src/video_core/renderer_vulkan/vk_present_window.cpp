@@ -2,6 +2,7 @@
 // Licensed under GPLv2 or any later version
 // Refer to the misc/licenses/gplv2.txt file included.
 
+#include "common/duo_stats.h"
 #include "common/microprofile.h"
 #include "common/settings.h"
 #include "common/thread.h"
@@ -246,6 +247,7 @@ void PresentWindow::RecreateFrame(Frame* frame, u32 width, u32 height) {
 
 Frame* PresentWindow::GetRenderFrame() {
     MICROPROFILE_SCOPE(Vulkan_WaitPresent);
+    Common::DuoStats::ScopedCost duo_cost{Common::DuoStats::Cost::FrameWait};
 
     // Wait for free presentation frames
     std::unique_lock lock{free_mutex};
@@ -283,9 +285,11 @@ Frame* PresentWindow::GetRenderFrame() {
 }
 
 void PresentWindow::Present(Frame* frame) {
+    frame->duo_queued_at = std::chrono::steady_clock::now();
     if (!use_present_thread) {
         scheduler.WaitWorker();
         CopyToSwapchain(frame);
+        swapchain.DuoPollDisplayTiming();
         free_queue.push(frame);
         return;
     }
@@ -336,6 +340,7 @@ void PresentWindow::PresentThread(std::stop_token token) {
         std::exchange(lock, std::unique_lock{swapchain_mutex});
 
         CopyToSwapchain(frame);
+        swapchain.DuoPollDisplayTiming();
 
         // Free the frame for reuse
         std::scoped_lock fl{free_mutex};
@@ -395,9 +400,12 @@ void PresentWindow::CopyToSwapchain(Frame* frame) {
     }
 #endif
 
+    swapchain.SetDuoWindow(emu_window.isSecondary() ? 1 : 0);
+    const auto duo_dequeued_at = std::chrono::steady_clock::now();
     while (!swapchain.AcquireNextImage()) {
         recreate_swapchain();
     }
+    const auto duo_acquired_at = std::chrono::steady_clock::now();
 
     const vk::Image swapchain_image = swapchain.Image();
 
@@ -509,7 +517,14 @@ void PresentWindow::CopyToSwapchain(Frame* frame) {
         UNREACHABLE();
     }
 
+    const auto duo_submitted_at = std::chrono::steady_clock::now();
     swapchain.Present();
+    const auto duo_presented_at = std::chrono::steady_clock::now();
+    Common::DuoStats::RecordPresent(emu_window.isSecondary() ? 1 : 0, swapchain.DuoLastPresentId(),
+                                    duo_dequeued_at - frame->duo_queued_at,
+                                    duo_acquired_at - duo_dequeued_at,
+                                    duo_submitted_at - duo_acquired_at,
+                                    duo_presented_at - duo_submitted_at);
 }
 
 vk::RenderPass PresentWindow::CreateRenderpass() {

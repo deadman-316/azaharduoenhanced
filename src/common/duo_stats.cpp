@@ -48,6 +48,8 @@ constexpr std::array<const char*, NumEvents> EVENT_NAMES = {
     "RendererDestroyed",
     "SlowSwapBuffers",
     "SlowSchedulerWait",
+    "SwapchainCreated",
+    "JitCacheInvalidated",
 };
 
 /// Events that represent compilation work or a thread blocked on it.
@@ -90,11 +92,28 @@ struct EventRow {
     u8 flags;
 };
 
+constexpr std::size_t NumCosts = static_cast<std::size_t>(Cost::Count);
+
 struct FrameRow {
     u64 t_ns;
     u32 interval_us;
     u32 work_us;
     u8 kind; // 0 = system frame, 1 = game frame, 2 = pause/discontinuity (excluded from stats)
+    std::array<u32, NumCosts> cost_us{};
+    std::array<u32, NumCosts> cost_amount{};
+};
+
+struct PresentRow {
+    u64 t_ns;
+    u64 present_id;
+    s64 actual_ns;   // displayed rows: session-relative display time
+    s64 earliest_ns; // displayed rows: session-relative earliest possible display time
+    u32 a_us;        // present rows: queue wait   | displayed rows: present margin
+    u32 b_us;        // present rows: acquire
+    u32 c_us;        // present rows: submit
+    u32 d_us;        // present rows: present
+    u8 window;
+    u8 kind; // 0 = present call, 1 = displayed (VK_GOOGLE_display_timing)
 };
 
 struct Counter {
@@ -131,6 +150,17 @@ struct State {
     std::mutex frame_mutex;
     std::vector<FrameRow> frame_pending;
 
+    std::mutex present_mutex;
+    std::vector<PresentRow> present_pending;
+
+    // Per-frame cost accumulators, drained by RecordSystemFrame.
+    std::array<std::atomic<u64>, NumCosts> cost_ns{};
+    std::array<std::atomic<u64>, NumCosts> cost_amount{};
+    // Session totals of the same.
+    std::array<std::atomic<u64>, NumCosts> cost_total_ns{};
+    // Session start expressed on CLOCK_MONOTONIC, for display timing conversion.
+    s64 session_start_monotonic_ns{};
+
     // [event][0 = gameplay, 1 = during load]
     std::array<std::array<Counter, 2>, NumEvents> counters;
 
@@ -153,7 +183,17 @@ struct State {
     bool writer_stop{false};
     FileUtil::IOFile events_file;
     FileUtil::IOFile frames_file;
+    FileUtil::IOFile present_file;
 };
+
+constexpr std::array<const char*, NumCosts> COST_NAMES = {
+    "swap", "frame_wait", "gpu_wait", "worker_wait",
+    "limiter", "file_read", "tex_upload", "jit_invalidate",
+};
+
+u32 ToUs32(u64 ns) {
+    return static_cast<u32>(std::min<u64>(ns / 1000, UINT32_MAX));
+}
 
 State& GetState() {
     // Intentionally leaked so that late callers during shutdown never touch a destroyed object.
@@ -236,7 +276,13 @@ std::string BuildSummary(State& s) {
                    s.spikes_major_with_compile.load(), s.game_frames.load(),
                    static_cast<double>(DISCONTINUITY_NS) / 1e9, s.discontinuities.load());
 
-    out += "[events] phase,event,count,total_ms,mean_ms,max_ms\n";
+    out += "[emulation thread time by category] category,total_ms,ms_per_frame\n";
+    for (std::size_t i = 0; i < NumCosts; i++) {
+        const u64 total = s.cost_total_ns[i].load();
+        fmt::format_to(std::back_inserter(out), "{},{:.1f},{:.3f}\n", COST_NAMES[i], Ms(total),
+                       frames ? Ms(total) / static_cast<double>(frames) : 0.0);
+    }
+    out += "\n[events] phase,event,count,total_ms,mean_ms,max_ms\n";
     for (std::size_t phase = 0; phase < 2; phase++) {
         for (std::size_t i = 0; i < NumEvents; i++) {
             const Counter& c = s.counters[i][phase];
@@ -297,13 +343,58 @@ void Flush(State& s) {
         std::string text;
         text.reserve(frames.size() * 32);
         for (const FrameRow& row : frames) {
-            fmt::format_to(std::back_inserter(text), "{:.3f},{},{:.3f},{:.3f}\n", Ms(row.t_ns),
+            fmt::format_to(std::back_inserter(text), "{:.3f},{},{:.3f},{:.3f}", Ms(row.t_ns),
                            row.kind == 0 ? "system" : row.kind == 1 ? "game" : "pause",
                            static_cast<double>(row.interval_us) / 1000.0,
                            static_cast<double>(row.work_us) / 1000.0);
+            if (row.kind == 1) {
+                // Game frame rows carry no cost data.
+                text += ",,,,,,,,,,,\n";
+                continue;
+            }
+            for (std::size_t i = 0; i < NumCosts; i++) {
+                fmt::format_to(std::back_inserter(text), ",{:.3f}",
+                               static_cast<double>(row.cost_us[i]) / 1000.0);
+            }
+            fmt::format_to(
+                std::back_inserter(text), ",{},{},{}\n",
+                row.cost_amount[static_cast<std::size_t>(Cost::FileRead)],
+                row.cost_amount[static_cast<std::size_t>(Cost::TextureUpload)],
+                row.cost_amount[static_cast<std::size_t>(Cost::JitInvalidate)]);
         }
         s.frames_file.WriteString(text);
         s.frames_file.Flush();
+    }
+
+    std::vector<PresentRow> presents;
+    presents.reserve(FRAME_RESERVE);
+    {
+        std::scoped_lock lock{s.present_mutex};
+        presents.swap(s.present_pending);
+    }
+    if (!presents.empty() && s.present_file.IsGood()) {
+        std::string text;
+        text.reserve(presents.size() * 64);
+        for (const PresentRow& row : presents) {
+            if (row.kind == 0) {
+                fmt::format_to(std::back_inserter(text),
+                               "{:.3f},{},present,{},{:.3f},{:.3f},{:.3f},{:.3f},,,\n",
+                               Ms(row.t_ns), row.window, row.present_id,
+                               static_cast<double>(row.a_us) / 1000.0,
+                               static_cast<double>(row.b_us) / 1000.0,
+                               static_cast<double>(row.c_us) / 1000.0,
+                               static_cast<double>(row.d_us) / 1000.0);
+            } else {
+                fmt::format_to(std::back_inserter(text),
+                               "{:.3f},{},displayed,{},,,,,{:.3f},{:.3f},{:.3f}\n", Ms(row.t_ns),
+                               row.window, row.present_id,
+                               static_cast<double>(row.actual_ns) / 1'000'000.0,
+                               static_cast<double>(row.earliest_ns) / 1'000'000.0,
+                               static_cast<double>(row.a_us) / 1000.0);
+            }
+        }
+        s.present_file.WriteString(text);
+        s.present_file.Flush();
     }
 
     FileUtil::WriteStringToFile(true, s.dir + "summary.txt", BuildSummary(s));
@@ -328,6 +419,21 @@ void BeginSession(u64 title_id, const std::string& device_report) {
     State& s = GetState();
     s.title_id = title_id;
     s.session_start = Clock::now();
+    // On Android std::chrono::steady_clock is CLOCK_MONOTONIC, the clock that
+    // VK_GOOGLE_display_timing reports in.
+    s.session_start_monotonic_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                                       s.session_start.time_since_epoch())
+                                       .count();
+    for (std::size_t i = 0; i < NumCosts; i++) {
+        s.cost_ns[i] = 0;
+        s.cost_amount[i] = 0;
+        s.cost_total_ns[i] = 0;
+    }
+    {
+        std::scoped_lock lock{s.present_mutex};
+        s.present_pending.clear();
+        s.present_pending.reserve(FRAME_RESERVE);
+    }
     s.loading = false;
 
     for (auto& per_event : s.counters) {
@@ -377,7 +483,15 @@ void BeginSession(u64 title_id, const std::string& device_report) {
         s.events_file.WriteString("t_ms,event,id,duration_ms,during_load,preloaded,stage,value\n");
     }
     if (s.frames_file.IsGood()) {
-        s.frames_file.WriteString("t_ms,kind,interval_ms,work_ms\n");
+        s.frames_file.WriteString(
+            "t_ms,kind,interval_ms,work_ms,swap_ms,frame_wait_ms,gpu_wait_ms,worker_wait_ms,"
+            "limiter_ms,file_read_ms,tex_upload_ms,jit_invalidate_ms,file_read_bytes,"
+            "tex_uploads,jit_invalidated_bytes\n");
+    }
+    s.present_file = FileUtil::IOFile(s.dir + "present.csv", "ab");
+    if (s.present_file.IsGood()) {
+        s.present_file.WriteString("t_ms,window,kind,present_id,queue_wait_ms,acquire_ms,"
+                                   "submit_ms,present_ms,displayed_t_ms,earliest_t_ms,margin_ms\n");
     }
 
     {
@@ -409,6 +523,7 @@ void EndSession() {
     Flush(s);
     s.events_file.Close();
     s.frames_file.Close();
+    s.present_file.Close();
 }
 
 bool IsActive() {
@@ -458,6 +573,15 @@ void RecordSystemFrame(Clock::duration interval, Clock::duration work) {
     const u64 t_ns = NowNs(s);
     const u64 interval_ns = ToNs(interval);
 
+    // Take everything attributed to this frame and start the next one from zero.
+    std::array<u32, NumCosts> cost_us;
+    std::array<u32, NumCosts> cost_amount;
+    for (std::size_t i = 0; i < NumCosts; i++) {
+        cost_us[i] = ToUs32(s.cost_ns[i].exchange(0, std::memory_order_relaxed));
+        cost_amount[i] = static_cast<u32>(std::min<u64>(
+            s.cost_amount[i].exchange(0, std::memory_order_relaxed), UINT32_MAX));
+    }
+
     if (interval_ns > DISCONTINUITY_NS) {
         s.discontinuities.fetch_add(1, std::memory_order_relaxed);
         std::scoped_lock lock{s.frame_mutex};
@@ -466,6 +590,8 @@ void RecordSystemFrame(Clock::duration interval, Clock::duration work) {
             .interval_us = static_cast<u32>(std::min<u64>(interval_ns / 1000, UINT32_MAX)),
             .work_us = static_cast<u32>(std::min<u64>(ToNs(work) / 1000, UINT32_MAX)),
             .kind = 2,
+            .cost_us = cost_us,
+            .cost_amount = cost_amount,
         });
         return;
     }
@@ -497,6 +623,8 @@ void RecordSystemFrame(Clock::duration interval, Clock::duration work) {
         .interval_us = static_cast<u32>(std::min<u64>(interval_ns / 1000, UINT32_MAX)),
         .work_us = static_cast<u32>(std::min<u64>(ToNs(work) / 1000, UINT32_MAX)),
         .kind = 0,
+        .cost_us = cost_us,
+        .cost_amount = cost_amount,
     });
 }
 
@@ -516,6 +644,63 @@ void RecordGameFrame() {
         .t_ns = t_ns,
         .interval_us = static_cast<u32>(std::min<u64>(interval_ns / 1000, UINT32_MAX)),
         .work_us = 0,
+        .kind = 1,
+    });
+}
+
+void AddFrameCost(Cost cost, Clock::duration duration, u64 amount) {
+    State& s = GetState();
+    if (!s.active.load(std::memory_order_relaxed)) {
+        return;
+    }
+    const std::size_t i = static_cast<std::size_t>(cost);
+    const u64 ns = ToNs(duration);
+    s.cost_ns[i].fetch_add(ns, std::memory_order_relaxed);
+    s.cost_total_ns[i].fetch_add(ns, std::memory_order_relaxed);
+    if (amount != 0) {
+        s.cost_amount[i].fetch_add(amount, std::memory_order_relaxed);
+    }
+}
+
+void RecordPresent(u8 window, u64 present_id, Clock::duration queue_wait, Clock::duration acquire,
+                   Clock::duration submit, Clock::duration present) {
+    State& s = GetState();
+    if (!s.active.load(std::memory_order_relaxed)) {
+        return;
+    }
+    const u64 t_ns = NowNs(s);
+    std::scoped_lock lock{s.present_mutex};
+    s.present_pending.push_back(PresentRow{
+        .t_ns = t_ns,
+        .present_id = present_id,
+        .actual_ns = 0,
+        .earliest_ns = 0,
+        .a_us = ToUs32(ToNs(queue_wait)),
+        .b_us = ToUs32(ToNs(acquire)),
+        .c_us = ToUs32(ToNs(submit)),
+        .d_us = ToUs32(ToNs(present)),
+        .window = window,
+        .kind = 0,
+    });
+}
+
+void RecordDisplayed(u8 window, u64 present_id, u64 actual_ns, u64 earliest_ns, u64 margin_ns) {
+    State& s = GetState();
+    if (!s.active.load(std::memory_order_relaxed)) {
+        return;
+    }
+    const u64 t_ns = NowNs(s);
+    std::scoped_lock lock{s.present_mutex};
+    s.present_pending.push_back(PresentRow{
+        .t_ns = t_ns,
+        .present_id = present_id,
+        .actual_ns = static_cast<s64>(actual_ns) - s.session_start_monotonic_ns,
+        .earliest_ns = static_cast<s64>(earliest_ns) - s.session_start_monotonic_ns,
+        .a_us = ToUs32(margin_ns),
+        .b_us = 0,
+        .c_us = 0,
+        .d_us = 0,
+        .window = window,
         .kind = 1,
     });
 }

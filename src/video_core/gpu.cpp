@@ -572,7 +572,8 @@ void GPU::VBlankCallback(std::uintptr_t user_data, s64 cycles_late) {
     // Present renderered frame.
     {
         Common::DuoStats::ScopedSlowEvent duo_timer{Common::DuoStats::Event::SlowSwapBuffers,
-                                                    std::chrono::milliseconds(10)};
+                                                    std::chrono::milliseconds(30)};
+        Common::DuoStats::ScopedCost duo_cost{Common::DuoStats::Cost::Swap};
         impl->renderer->SwapBuffers();
     }
 

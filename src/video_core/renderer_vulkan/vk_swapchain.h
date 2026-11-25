@@ -69,6 +69,22 @@ public:
         return present_ready[image_index];
     }
 
+    /// Azahar Duo Enhanced: which window this swapchain belongs to (0 main, 1 secondary).
+    /// Only used to label diagnostics.
+    void SetDuoWindow(u8 window) {
+        duo_window = window;
+    }
+
+    /// Azahar Duo Enhanced (diagnostics): collects the display's reports of when recently
+    /// presented images were shown. Call with the swapchain externally synchronised and
+    /// without holding the queue submit lock.
+    void DuoPollDisplayTiming();
+
+    /// Azahar Duo Enhanced: identifier given to the most recent present call.
+    u32 DuoLastPresentId() const {
+        return duo_present_id;
+    }
+
 private:
     /// Selects the best available swapchain image format
     void FindPresentFormat();
@@ -107,6 +123,8 @@ private:
     u32 frame_index = 0;
     bool needs_recreation = true;
     bool low_refresh_rate;
+    u8 duo_window = 0;
+    u32 duo_present_id = 0;
 };
 
 } // namespace Vulkan

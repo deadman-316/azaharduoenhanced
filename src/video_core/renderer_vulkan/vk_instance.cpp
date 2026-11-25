@@ -449,6 +449,9 @@ bool Instance::CreateDevice() {
     const bool is_turnip = driver_id == vk::DriverIdKHR::eMesaTurnip;
 
     add_extension(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
+    // Azahar Duo Enhanced (diagnostics): lets the swapchain report when each image was
+    // actually shown on the display. Enabling it does not change presentation.
+    display_timing = add_extension(VK_GOOGLE_DISPLAY_TIMING_EXTENSION_NAME);
     image_format_list = add_extension(VK_KHR_IMAGE_FORMAT_LIST_EXTENSION_NAME);
     create_renderpass2 = add_extension(VK_KHR_CREATE_RENDERPASS_2_EXTENSION_NAME);
     depth_stencil_resolve = add_extension(VK_KHR_DEPTH_STENCIL_RESOLVE_EXTENSION_NAME);

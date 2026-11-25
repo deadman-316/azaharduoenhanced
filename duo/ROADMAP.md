@@ -1,12 +1,15 @@
 # Roadmap
 
-Order revised by the project owner on 2026-11-25. Full pre-game compilation is the top priority.
+Order revised by the project owner on 2026-11-25. The owner's primary objective is the smoothest possible gameplay, whatever the cause of
+stutter: target is consistent 16.67 ms frame delivery for 60 FPS games and 33.33 ms for
+30 FPS games. Primary benchmark game: Super Mario 3D Land.
 The original brief is in `duo/docs/roadmap-original.md`.
 
 | Version | Milestone | Status |
 | --- | --- | --- |
-| 0.1 | Baseline fork, instrumentation and device diagnostics | Built and verified by CI (0.1.0); awaiting device test |
-| 0.2 | Full known-shader and pipeline precompilation before gameplay | Next |
+| 0.1 | Baseline fork, instrumentation and device diagnostics | Done. Device-tested 2026-11-25 (see `duo/benchmarks/`) |
+| 0.1.x | Frame pacing investigation (diagnostics only), added 2026-11-25 after device logs showed warm-cache stutter is mostly not compilation | In progress (0.1.2) |
+| 0.2 | Full known-shader and pipeline precompilation before gameplay, with the driver cache saved right after preparation | Retained; follows the pacing investigation |
 | 0.3 | Cache durability: automatic saving, corruption recovery, driver-specific separation | Planned |
 | 0.4 | Parallel shader regeneration and runtime compilation scheduling | Planned |
 | 0.5 | Shader cache manager, import/export, cache merging, offline batch preparation | Planned |

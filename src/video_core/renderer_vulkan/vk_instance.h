@@ -136,6 +136,11 @@ public:
         return timeline_semaphores;
     }
 
+    /// Azahar Duo Enhanced: returns true when VK_GOOGLE_display_timing is enabled
+    bool IsDisplayTimingSupported() const {
+        return display_timing;
+    }
+
     /// Returns true when VK_EXT_extended_dynamic_state is supported
     bool IsExtendedDynamicStateSupported() const {
         return extended_dynamic_state;
@@ -352,6 +357,7 @@ protected:
     u64 min_imported_host_pointer_alignment{};
     bool layered_rendering_supported{true};
     bool tooling_info{};
+    bool display_timing{};
     bool debug_utils_supported{};
     bool has_nsight_graphics{};
     bool has_renderdoc{};

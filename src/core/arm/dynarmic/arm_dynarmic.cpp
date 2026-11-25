@@ -2,6 +2,7 @@
 // Licensed under GPLv2 or any later version
 // Refer to the misc/licenses/gplv2.txt file included.
 
+#include "common/duo_stats.h"
 #include <csignal>
 #include <cstring>
 #include <dynarmic/interface/A32/a32.h>
@@ -314,12 +315,15 @@ void ARM_Dynarmic::PrepareReschedule() {
 }
 
 void ARM_Dynarmic::ClearInstructionCache() {
+    Common::DuoStats::Record(Common::DuoStats::Event::JitCacheInvalidated);
+    Common::DuoStats::ScopedCost duo_cost{Common::DuoStats::Cost::JitInvalidate};
     for (const auto& j : jits) {
         j.second->ClearCache();
     }
 }
 
 void ARM_Dynarmic::InvalidateCacheRange(u32 start_address, std::size_t length) {
+    Common::DuoStats::ScopedCost duo_cost{Common::DuoStats::Cost::JitInvalidate, length};
     jit->InvalidateCacheRange(start_address, length);
 }
 

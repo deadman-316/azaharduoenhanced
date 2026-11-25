@@ -2,6 +2,7 @@
 // Licensed under GPLv2 or any later version
 // Refer to the misc/licenses/gplv2.txt file included.
 
+#include "common/duo_stats.h"
 #include <algorithm>
 #include <limits>
 #include "common/logging/log.h"
@@ -88,6 +89,24 @@ void Swapchain::Create(u32 width_, u32 height_, vk::SurfaceKHR surface_, bool lo
 
     SetupImages();
     RefreshSemaphores();
+
+    // Azahar Duo Enhanced (diagnostics): note the swapchain's properties and the refresh
+    // period of the display it is shown on.
+    u64 refresh_ns = 0;
+    if (instance.IsDisplayTimingSupported()) {
+        try {
+            refresh_ns =
+                instance.GetDevice().getRefreshCycleDurationGOOGLE(swapchain).refreshDuration;
+        } catch (const vk::SystemError&) {
+        }
+    }
+    // id packs: window | present mode << 8 | image count << 16 | width << 24 | height << 40
+    const u64 duo_id = static_cast<u64>(duo_window) |
+                       (static_cast<u64>(present_mode) & 0xff) << 8 |
+                       static_cast<u64>(image_count & 0xff) << 16 |
+                       static_cast<u64>(extent.width & 0xffff) << 24 |
+                       static_cast<u64>(extent.height & 0xffff) << 40;
+    Common::DuoStats::Record(Common::DuoStats::Event::SwapchainCreated, duo_id, {}, 0, refresh_ns);
 }
 
 bool Swapchain::AcquireNextImage() {
@@ -119,7 +138,22 @@ bool Swapchain::AcquireNextImage() {
 }
 
 void Swapchain::Present() {
+    // Azahar Duo Enhanced (diagnostics): tag the present with an id so the display's report
+    // of when it was shown can be matched up. desiredPresentTime = 0 means "no preference",
+    // which is the same request as presenting without this structure.
+    duo_present_id++;
+    const vk::PresentTimeGOOGLE duo_present_time = {
+        .presentID = duo_present_id,
+        .desiredPresentTime = 0,
+    };
+    const vk::PresentTimesInfoGOOGLE duo_present_times = {
+        .swapchainCount = 1,
+        .pTimes = &duo_present_time,
+    };
+    const bool duo_timing = instance.IsDisplayTimingSupported();
+
     const vk::PresentInfoKHR present_info = {
+        .pNext = duo_timing ? &duo_present_times : nullptr,
         .waitSemaphoreCount = 1,
         .pWaitSemaphores = &present_ready[image_index],
         .swapchainCount = 1,
@@ -142,6 +176,27 @@ void Swapchain::Present() {
     }
 
     frame_index = (frame_index + 1) % image_count;
+}
+
+void Swapchain::DuoPollDisplayTiming() {
+    // Results are buffered by the platform, so asking every few presents is enough and keeps
+    // the number of calls into the window system low.
+    if (!instance.IsDisplayTimingSupported() || !swapchain || needs_recreation ||
+        (duo_present_id % 4) != 0 || !Common::DuoStats::IsActive()) {
+        return;
+    }
+    {
+        try {
+            const auto timings = instance.GetDevice().getPastPresentationTimingGOOGLE(swapchain);
+            for (const vk::PastPresentationTimingGOOGLE& timing : timings) {
+                Common::DuoStats::RecordDisplayed(duo_window, timing.presentID,
+                                                  timing.actualPresentTime,
+                                                  timing.earliestPresentTime,
+                                                  timing.presentMargin);
+            }
+        } catch (const vk::SystemError&) {
+        }
+    }
 }
 
 void Swapchain::FindPresentFormat() {

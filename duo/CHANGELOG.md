@@ -1,5 +1,39 @@
 # Changelog
 
+## 0.1.2 - Frame pacing diagnostics
+
+Diagnostics only. Emulation, rendering and caching logic are unchanged. One difference from
+upstream at the Vulkan level: the `VK_GOOGLE_display_timing` extension is enabled when the
+driver offers it, and each present call carries an id (with no requested present time) so
+the display's own report of when the image was shown can be collected.
+
+### Added
+- `present.csv`, one row per presented image and per display report, for each window
+  (0 = main, 1 = secondary):
+  - `present` rows: time the finished frame waited in the present queue, and the duration
+    of image acquire, copy submit and `vkQueuePresentKHR`.
+  - `displayed` rows: when the display actually showed that image and the earliest it
+    could have, from `VK_GOOGLE_display_timing`.
+- `frames.csv` gains per-frame columns saying where the emulation thread's time went:
+  frame presentation (`swap`), waiting for a free presentation frame (`frame_wait`), waiting
+  for the GPU (`gpu_wait`), waiting for the render worker (`worker_wait`), speed limiter
+  sleep (`limiter`), file reads with byte count (`file_read`), texture uploads with count
+  (`tex_upload`) and CPU JIT cache invalidations (`jit_invalidate`).
+- `summary.txt` totals for the same categories.
+- `SwapchainCreated` event per window with present mode, image count, size and the
+  display's refresh period; `JitCacheInvalidated` event.
+
+### Changed
+- `SlowSwapBuffers` now records only presents over 30 ms (10 ms caught every normal frame).
+
+### Not covered
+- CPU JIT translation time is not measured directly (it would need changes inside the
+  JIT library). It shows up as emulation-thread work not explained by any other category,
+  and by comparing a first and a second pass through the same level.
+- Android Choreographer and SurfaceFlinger statistics are not read; the display timing
+  extension reports the same end result (when each image reached the screen).
+- Audio buffer underruns are not recorded yet.
+
 ## 0.1.1 - Measurement fixes
 
 Still no change to emulation, rendering or caching behaviour.

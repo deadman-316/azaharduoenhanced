@@ -2,6 +2,7 @@
 // Licensed under GPLv3 or any later version
 // Refer to the LICENSE.txt file included.
 
+#include "common/duo_stats.h"
 #include "video_core/renderer_vulkan/vk_texture_runtime.h"
 
 #include <limits>
@@ -908,6 +909,7 @@ Surface::Surface(TextureRuntime& runtime_, const VideoCore::SurfaceBase& surface
 
 void Surface::Upload(const VideoCore::BufferTextureCopy& upload,
                      const VideoCore::StagingData& staging) {
+    Common::DuoStats::ScopedCost duo_cost{Common::DuoStats::Cost::TextureUpload, 1};
     runtime.renderpass_cache.EndRendering();
 
     const RecordParams params = {

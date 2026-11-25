@@ -3,6 +3,7 @@
 // Refer to the misc/licenses/gplv2.txt file included.
 
 #include <atomic>
+#include <chrono>
 #include <condition_variable>
 #include <mutex>
 #include <queue>
@@ -32,6 +33,8 @@ struct Frame {
     vk::Semaphore render_ready;
     vk::Fence present_done;
     vk::CommandBuffer cmdbuf;
+    /// Azahar Duo Enhanced: when the frame was handed to the present queue (diagnostics).
+    std::chrono::steady_clock::time_point duo_queued_at{};
 };
 
 class PresentWindow final {

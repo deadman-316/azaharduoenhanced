@@ -80,6 +80,7 @@ void Scheduler::WaitWorker() {
     MICROPROFILE_SCOPE(Vulkan_WaitForWorker);
     Common::DuoStats::ScopedSlowEvent duo_timer{Common::DuoStats::Event::SlowSchedulerWait,
                                                 std::chrono::milliseconds(10)};
+    Common::DuoStats::ScopedCost duo_cost{Common::DuoStats::Cost::WorkerWait};
     DispatchWork();
 
     // Ensure the queue is drained.
@@ -94,6 +95,7 @@ void Scheduler::WaitWorker() {
 }
 
 void Scheduler::Wait(u64 tick) {
+    Common::DuoStats::ScopedCost duo_cost{Common::DuoStats::Cost::GpuWait};
     if (tick >= master_semaphore->CurrentTick()) {
         // Make sure we are not waiting for the current tick without signalling
         Flush();

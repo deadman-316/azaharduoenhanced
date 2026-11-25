@@ -275,6 +275,7 @@ void FrameLimiter::DoFrameLimiting(microseconds current_system_time_us) {
         std::clamp(frame_limiting_delta_err, -max_lag_time_us, max_lag_time_us);
 
     if (frame_limiting_delta_err > microseconds::zero()) {
+        Common::DuoStats::ScopedCost duo_cost{Common::DuoStats::Cost::Limiter};
         if (wait_callback) {
             wait_callback(std::chrono::steady_clock::now() + frame_limiting_delta_err);
         } else {

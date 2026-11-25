@@ -17,6 +17,7 @@
 #include <cryptopp/aes.h>
 #include <cryptopp/modes.h>
 #include <fmt/format.h>
+#include "common/duo_stats.h"
 #include "common/archives.h"
 #include "common/assert.h"
 #include "common/common_funcs.h"
@@ -1460,6 +1461,7 @@ std::size_t IOFile::ReadImpl(void* data, std::size_t length, std::size_t elem_si
 
     DEBUG_ASSERT(data != nullptr);
 
+    Common::DuoStats::ScopedCost duo_cost{Common::DuoStats::Cost::FileRead, length * elem_size};
     std::size_t read = FREAD(data, elem_size, length, m_file);
     if (read != length) {
         m_good = FERROR(m_file) != 0;
@@ -1507,6 +1509,7 @@ std::size_t IOFile::ReadAtImpl(void* data, std::size_t byte_count, std::size_t o
 
     DEBUG_ASSERT(data != nullptr);
 
+    Common::DuoStats::ScopedCost duo_cost{Common::DuoStats::Cost::FileRead, byte_count};
     std::size_t read;
 #ifdef HAVE_LIBRETRO_VFS
     std::scoped_lock lock(m_file_pos_mutex);

@@ -52,10 +52,16 @@ enum class Event : u8 {
     /// Marker: the renderer's pipeline cache was destroyed (emulation stop, or the renderer
     /// being rebuilt, for example when a save state is loaded).
     RendererDestroyed,
-    /// The emulation thread spent more than 10 ms presenting a frame (SwapBuffers).
+    /// The emulation thread spent more than 30 ms presenting a frame (SwapBuffers).
     SlowSwapBuffers,
     /// A thread spent more than 10 ms waiting for the Vulkan scheduler worker to drain.
     SlowSchedulerWait,
+    /// A swapchain was (re)created. id = window (0 main, 1 secondary),
+    /// value = display refresh period in nanoseconds (0 if unknown),
+    /// duration field carries nothing. See present.csv for per-frame data.
+    SwapchainCreated,
+    /// The CPU JIT threw away translated code. value = bytes invalidated (0 = everything).
+    JitCacheInvalidated,
 
     Count,
 };
@@ -95,6 +101,58 @@ void RecordSystemFrame(Clock::duration interval, Clock::duration work);
 
 /// Records that the game presented a new frame. Thread-safe. No disk I/O.
 void RecordGameFrame();
+
+/// Per-frame cost categories. Time added to a category is attributed to the emulated frame
+/// in which it happened and written as extra columns in frames.csv.
+enum class Cost : u8 {
+    Swap,          ///< Whole of RendererVulkan::SwapBuffers on the emulation thread
+    FrameWait,     ///< Waiting for a free presentation frame (present queue back-pressure)
+    GpuWait,       ///< Waiting for the GPU to reach a tick (Scheduler::Wait)
+    WorkerWait,    ///< Waiting for the Vulkan scheduler worker thread to drain
+    Limiter,       ///< Sleeping in the emulation speed limiter
+    FileRead,      ///< Blocking file reads (amount = bytes)
+    TextureUpload, ///< Uploading guest textures to the GPU (amount = uploads)
+    JitInvalidate, ///< CPU JIT cache invalidations (amount = bytes)
+    Count,
+};
+
+/// Adds time (and an optional amount such as bytes) to a per-frame cost category.
+/// Lock-free: two relaxed atomic adds.
+void AddFrameCost(Cost cost, Clock::duration duration, u64 amount = 0);
+
+/// Records one swapchain presentation on the present thread. No disk I/O.
+/// queue_wait = time the finished frame sat in the present queue,
+/// acquire = vkAcquireNextImageKHR, submit = copy submit, present = vkQueuePresentKHR.
+void RecordPresent(u8 window, u64 present_id, Clock::duration queue_wait, Clock::duration acquire,
+                   Clock::duration submit, Clock::duration present);
+
+/// Records when the display actually showed a presented image, as reported by
+/// VK_GOOGLE_display_timing. Times are CLOCK_MONOTONIC nanoseconds. No disk I/O.
+void RecordDisplayed(u8 window, u64 present_id, u64 actual_ns, u64 earliest_ns, u64 margin_ns);
+
+/// RAII timer that adds its elapsed time to a per-frame cost category.
+class ScopedCost {
+public:
+    explicit ScopedCost(Cost cost_, u64 amount_ = 0)
+        : cost{cost_}, amount{amount_}, active{IsActive()} {
+        if (active) {
+            start = Clock::now();
+        }
+    }
+    ~ScopedCost() {
+        if (active) {
+            AddFrameCost(cost, Clock::now() - start, amount);
+        }
+    }
+    ScopedCost(const ScopedCost&) = delete;
+    ScopedCost& operator=(const ScopedCost&) = delete;
+
+private:
+    Cost cost;
+    u64 amount;
+    bool active;
+    Clock::time_point start{};
+};
 
 /// RAII timer that records an event only when it took longer than the given threshold.
 /// For probing hot paths where recording every call would be too much data.
